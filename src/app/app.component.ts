@@ -5,16 +5,17 @@ import { Component, AfterViewInit, NgZone } from '@angular/core';
 import * as L from 'leaflet';
 import 'leaflet-routing-machine';
 
-// Definição de tipo para um stand (boa prática)
+// Definição de tipo para um stand
 interface Stand {
   name: string;
   coords: L.LatLngExpression;
+  img?: string; // Imagem opcional
 }
 
-// Ícone padrão (código sem alterações)
-// const iconRetinaUrl = 'assets/marker-icon-2x.png';
-// const iconUrl = 'assets/marker-icon.png';
-// const shadowUrl = 'assets/marker-shadow.png';
+// Ícone padrão do Leaflet (para evitar quebras de imagem)
+// const iconRetinaUrl = '../assets/images/marker-icon-2x.png';
+// const iconUrl = '../assets/images/marker-icon.png';
+// const shadowUrl = '../assets/images/marker-shadow.png';
 // const iconDefault = L.icon({
 //   iconRetinaUrl,
 //   iconUrl,
@@ -26,12 +27,12 @@ interface Stand {
 //   shadowSize: [41, 41]
 // });
 // L.Marker.prototype.options.icon = iconDefault;
-
+const imageUrl = 'assets/images/johndeere.jpg';
 @Component({
   selector: 'app-root',
   imports: [CommonModule],
   templateUrl: './app.component.html',
-  styleUrls: ['./app.component.css']
+  styleUrls: ['./app.component.css'],
 })
 export class AppComponent implements AfterViewInit {
   private map: any;
@@ -40,11 +41,12 @@ export class AppComponent implements AfterViewInit {
   private routingControl: L.Routing.Control | null = null;
 
   public stands: Stand[] = [
-    { name: 'John Dear', coords: [-24.980359, -53.339052] },
+    { name: 'John Dear', coords: [-24.980359, -53.339052], img: imageUrl },
     { name: 'Jacto', coords: [-24.980052, -53.339754] },
     { name: 'Prisma', coords: [-24.983057, -53.338978] },
     { name: 'New Holland', coords: [-24.978958, -53.341273] },
-    { name: 'Coamo', coords: [-24.978659, -53.339032] }
+    { name: 'Coamo', coords: [-24.978659, -53.339032] },
+    { name: 'Perche', coords: [-24.97814669824593, -53.34026992321015] },
   ];
 
   constructor(private zone: NgZone) {}
@@ -60,41 +62,47 @@ export class AppComponent implements AfterViewInit {
     this.map = L.map('map').setView(showRuralCoords, 16);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(this.map);
 
-    this.stands.forEach(stand => {
-      L.marker(stand.coords).addTo(this.map).bindPopup(`<b>${stand.name}</b>`);
-    });
+    // this.stands.forEach(stand => {
+    //   L.marker(stand.coords).addTo(this.map).bindPopup(`<img src="${stand.img}" alt="Imagem do stand ${stand.name}" style="width: 100px; height: auto;">`);
+    // });
 
-    // AJUSTE: Reativando a busca automática de localização ao iniciar
+    // Busca automática e contínua da localização
     const locateOptions: L.LocateOptions = {
-      watch: true,          // Continua observando a localização
-      setView: false,         // Não move o mapa para o usuário
+      watch: true,
+      setView: false,
       maxZoom: 16,
-      enableHighAccuracy: true
+      enableHighAccuracy: true,
     };
     this.map.locate(locateOptions);
 
-    this.map.on('locationfound', (e: L.LocationEvent) => this.onLocationFound(e));
+    this.map.on('locationfound', (e: L.LocationEvent) =>
+      this.onLocationFound(e)
+    );
     this.map.on('locationerror', (e: L.ErrorEvent) => this.onLocationError(e));
   }
 
-  // O método findMyLocation() foi REMOVIDO
-
   public onStandSelected(event: any): void {
     const standIndex = event.target.value;
-    if (standIndex === "" || standIndex === null) return;
-
+    if (standIndex === '' || standIndex === null) return;
     const selectedStand = this.stands[standIndex];
+    L.marker(selectedStand.coords)
+      .addTo(this.map)
+      .bindPopup(
+        `<img src="${selectedStand.img}" alt="Imagem do stand ${selectedStand.name}" style="width: 100px; height: auto;">`
+      );
     this.createRouteTo(selectedStand.coords);
   }
 
   private createRouteTo(destination: L.LatLngExpression): void {
-    // AJUSTE: Mudança na mensagem de alerta
     if (this.userLocation === null) {
       this.zone.run(() => {
-        alert("Aguardando a sua localização. Por favor, certifique-se de que a permissão foi concedida ao site.");
+        alert(
+          'Aguardando a sua localização. Por favor, certifique-se de que a permissão foi concedida ao site.'
+        );
       });
       return;
     }
@@ -107,36 +115,49 @@ export class AppComponent implements AfterViewInit {
       waypoints: [this.userLocation, L.latLng(destination)],
       routeWhileDragging: false,
       addWaypoints: false,
-      lineOptions: {
-        styles: [{ color: '#005b9f', opacity: 0.8, weight: 6 }],
-        extendToWaypoints: true,
-        missingRouteTolerance: 1
-      }
+
+      // MELHORIA 2: Não mostrar o painel de instruções
+      show: false,
+
+      // Remove os marcadores padrão para não duplicar
     }).addTo(this.map);
   }
 
   private onLocationFound(e: L.LocationEvent): void {
     this.userLocation = e.latlng;
+
+    // Adiciona ou atualiza o marcador da localização do usuário
     if (this.userLocationMarker === null) {
       this.userLocationMarker = L.marker(this.userLocation)
         .addTo(this.map)
-        .bindPopup("Você está aqui!");
+        .bindPopup('Você está aqui!');
     } else {
       this.userLocationMarker.setLatLng(this.userLocation);
+    }
+
+    // MELHORIA 3: Atualiza a rota em tempo real se ela existir
+    if (this.routingControl) {
+      this.routingControl.spliceWaypoints(
+        0,
+        1,
+        L.Routing.waypoint(this.userLocation)
+      );
     }
   }
 
   private onLocationError(e: L.ErrorEvent): void {
-    let errorMessage = "Ocorreu um erro ao tentar obter sua localização.";
+    let errorMessage = 'Ocorreu um erro ao tentar obter sua localização.';
     switch (e.code) {
       case 1:
-        errorMessage = "Você negou o acesso à localização.\n\nPara usar a função de rota, por favor, habilite a permissão nas configurações do seu navegador.";
+        errorMessage =
+          'Você negou o acesso à localização.\n\nPara usar a função de rota, por favor, habilite a permissão nas configurações do seu navegador.';
         break;
       case 2:
-        errorMessage = "Sua localização não está disponível.\n\nVerifique se o GPS ou serviço de localização do seu dispositivo está ativo.";
+        errorMessage =
+          'Sua localização não está disponível.\n\nVerifique se o GPS ou serviço de localização do seu dispositivo está ativo.';
         break;
       case 3:
-        errorMessage = "A requisição para obter sua localização demorou muito.";
+        errorMessage = 'A requisição para obter sua localização demorou muito.';
         break;
     }
     this.zone.run(() => {
