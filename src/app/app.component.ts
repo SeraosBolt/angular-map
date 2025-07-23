@@ -38,7 +38,8 @@ export class AppComponent implements AfterViewInit {
   private destinationMarker: L.Marker | null = null;
   private routingControl: L.Routing.Control | null = null;
   private standMarkers = L.layerGroup(); // Grupo para controlar os marcadores dos stands
-
+  private carMarker: L.Marker | null = null;
+  private readonly CAR_LOCATION_KEY = 'showRuralCarLocation';
   // Lista de stands com as URLs das imagens
   public stands: Stand[] = [
     {
@@ -81,8 +82,7 @@ export class AppComponent implements AfterViewInit {
     this.map = L.map('map').setView(showRuralCoords, 16);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution:
-        'Prisma Softwares de gestão',
+      attribution: 'Prisma Softwares de gestão',
     }).addTo(this.map);
 
     // // Adiciona todos os marcadores de stand ao grupo para controle
@@ -98,9 +98,55 @@ export class AppComponent implements AfterViewInit {
       this.onLocationFound(e)
     );
     this.map.on('locationerror', (e: L.ErrorEvent) => this.onLocationError(e));
+  }
+  public saveCarLocation(): void {
+    if (!this.userLocation) {
+      alert(
+        'Sua localização ainda não foi encontrada. Aguarde um momento e tente novamente.'
+      );
+      return;
+    }
+    // Salva no localStorage
+    localStorage.setItem(
+      this.CAR_LOCATION_KEY,
+      JSON.stringify(this.userLocation)
+    );
+    this.addCarMarker(this.userLocation);
+    alert('Localização do carro salva!');
+  }
 
-    this.map.on('click', (e: L.LeafletMouseEvent) => this.clearMapForNavigation());
-    
+  public routeToCar(): void {
+    const savedLocation = localStorage.getItem(this.CAR_LOCATION_KEY);
+    if (!savedLocation) {
+      alert('Nenhuma localização de carro foi salva.');
+      return;
+    }
+    const carCoords = JSON.parse(savedLocation);
+    this.clearMapForNavigation(false); // Limpa o mapa, mas mantém o marcador do carro
+    this.createRouteTo(carCoords);
+  }
+
+  private loadSavedCarLocation(): void {
+    const savedLocation = localStorage.getItem(this.CAR_LOCATION_KEY);
+    if (savedLocation) {
+      this.addCarMarker(JSON.parse(savedLocation));
+    }
+  }
+
+  private addCarMarker(coords: L.LatLngExpression): void {
+    if (this.carMarker) {
+      this.map.removeLayer(this.carMarker);
+    }
+    // Cria um ícone customizado para o carro
+    const carIcon = L.icon({
+      iconUrl: 'assets/images/car-marker.png', // **CRIE ESSA IMAGEM!**
+      iconSize: [35, 35],
+      iconAnchor: [17, 35],
+      popupAnchor: [0, -35],
+    });
+    this.carMarker = L.marker(coords, { icon: carIcon })
+      .addTo(this.map)
+      .bindPopup('<b>Seu carro está aqui!</b>');
   }
 
   // Chamado quando um stand é selecionado no <select>
@@ -111,19 +157,23 @@ export class AppComponent implements AfterViewInit {
     const selectedStand = this.stands[standIndex];
 
     // MELHORIA 2 e 3: Limpa o mapa e exibe apenas o stand selecionado
-    this.clearMapForNavigation();
+    this.clearMapForNavigation(true);
     this.showDestinationMarker(selectedStand);
     this.createRouteTo(selectedStand.coords);
   }
 
   // Limpa marcadores de stands e rotas antigas
-  private clearMapForNavigation(): void {
+  private clearMapForNavigation(clearCarMarker: boolean): void {
     this.map.removeLayer(this.standMarkers); // Remove todos os marcadores iniciais
     if (this.destinationMarker) {
       this.map.removeLayer(this.destinationMarker); // Remove o marcador de destino anterior
     }
     if (this.routingControl) {
       this.map.removeControl(this.routingControl); // Remove a rota anterior
+    }
+        if (clearCarMarker && this.carMarker) { // Só remove o marcador do carro se necessário
+        this.map.removeLayer(this.carMarker);
+        this.carMarker = null; // Garante que ele possa ser recarregado
     }
   }
 
