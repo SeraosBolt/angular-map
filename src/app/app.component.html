@@ -1,5 +1,6 @@
 <div id="map"></div>
 
+
 <select class="stand-selector" (change)="onStandSelected($event)" title="Ir para um stand">
   <option value="" disabled selected>-- Selecione um stand --</option>
   <option *ngFor="let stand of stands; let i = index" [value]="i">
