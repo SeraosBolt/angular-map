@@ -40,6 +40,7 @@ export class AppComponent implements AfterViewInit {
   private standMarkers = L.layerGroup(); // Grupo para controlar os marcadores dos stands
   private carMarker: L.Marker | null = null;
   private readonly CAR_LOCATION_KEY = 'showRuralCarLocation';
+  private recalculatingControl: L.Control | null = null;
   // Lista de stands com as URLs das imagens
   public stands: Stand[] = [
     {
@@ -67,6 +68,16 @@ export class AppComponent implements AfterViewInit {
       coords: [-24.978659, -53.339032],
       imageUrl: 'assets/images/coamo_logo.jpeg',
     },
+    {
+      name: 'Muffato',
+      coords: [-24.954390222009657, -53.46733152866364],
+      imageUrl: 'assets/images/muffato.png',
+    },
+    {
+      name: 'Posto Macedo',
+      coords: [-24.957245132087568, -53.4654325246811],
+      imageUrl: 'assets/images/macedo.png',
+    },
   ];
 
   constructor(private zone: NgZone) {}
@@ -74,6 +85,7 @@ export class AppComponent implements AfterViewInit {
   ngAfterViewInit(): void {
     this.zone.runOutsideAngular(() => {
       this.initMap();
+      this.loadSavedCarLocation();
     });
   }
 
@@ -89,8 +101,7 @@ export class AppComponent implements AfterViewInit {
     // this.stands.forEach(stand => {
     //   L.marker(stand.coords).bindPopup(`<b>${stand.name}</b>`).addTo(this.standMarkers);
     // });
-    this.standMarkers.addTo(this.map);
-
+    this.setupRecalculatingMessage();
     // Inicia a busca contínua pela localização do usuário
     this.map.locate({ watch: true, setView: false, enableHighAccuracy: true });
 
@@ -98,6 +109,8 @@ export class AppComponent implements AfterViewInit {
       this.onLocationFound(e)
     );
     this.map.on('locationerror', (e: L.ErrorEvent) => this.onLocationError(e));
+
+    this.map.on('click', (e: L.LeafletMouseEvent) => console.log(e.latlng));
   }
   public saveCarLocation(): void {
     if (!this.userLocation) {
@@ -106,7 +119,6 @@ export class AppComponent implements AfterViewInit {
       );
       return;
     }
-    // Salva no localStorage
     localStorage.setItem(
       this.CAR_LOCATION_KEY,
       JSON.stringify(this.userLocation)
@@ -122,7 +134,7 @@ export class AppComponent implements AfterViewInit {
       return;
     }
     const carCoords = JSON.parse(savedLocation);
-    this.clearMapForNavigation(false); // Limpa o mapa, mas mantém o marcador do carro
+    this.clearMapForNavigation(false);
     this.createRouteTo(carCoords);
   }
 
@@ -134,12 +146,10 @@ export class AppComponent implements AfterViewInit {
   }
 
   private addCarMarker(coords: L.LatLngExpression): void {
-    if (this.carMarker) {
-      this.map.removeLayer(this.carMarker);
-    }
-    // Cria um ícone customizado para o carro
+    if (this.carMarker) this.map.removeLayer(this.carMarker);
+
     const carIcon = L.icon({
-      iconUrl: 'assets/images/car-marker.png', // **CRIE ESSA IMAGEM!**
+      iconUrl: 'assets/images/car-marker.png',
       iconSize: [35, 35],
       iconAnchor: [17, 35],
       popupAnchor: [0, -35],
@@ -153,96 +163,109 @@ export class AppComponent implements AfterViewInit {
   public onStandSelected(event: any): void {
     const standIndex = event.target.value;
     if (standIndex === '' || standIndex === null) return;
-
     const selectedStand = this.stands[standIndex];
 
-    // MELHORIA 2 e 3: Limpa o mapa e exibe apenas o stand selecionado
-    this.clearMapForNavigation(true);
+    // MELHORIA 3: O marcador do carro não é mais removido ao selecionar um stand
+    this.clearMapForNavigation(false);
     this.showDestinationMarker(selectedStand);
     this.createRouteTo(selectedStand.coords);
   }
 
-  // Limpa marcadores de stands e rotas antigas
   private clearMapForNavigation(clearCarMarker: boolean): void {
-    this.map.removeLayer(this.standMarkers); // Remove todos os marcadores iniciais
-    if (this.destinationMarker) {
-      this.map.removeLayer(this.destinationMarker); // Remove o marcador de destino anterior
-    }
-    if (this.routingControl) {
-      this.map.removeControl(this.routingControl); // Remove a rota anterior
-    }
-        if (clearCarMarker && this.carMarker) { // Só remove o marcador do carro se necessário
-        this.map.removeLayer(this.carMarker);
-        this.carMarker = null; // Garante que ele possa ser recarregado
+    this.map.removeLayer(this.standMarkers);
+    if (this.destinationMarker) this.map.removeLayer(this.destinationMarker);
+    if (this.routingControl) this.map.removeControl(this.routingControl);
+    if (clearCarMarker && this.carMarker) {
+      this.map.removeLayer(this.carMarker);
+      this.carMarker = null;
     }
   }
 
   // Mostra um único marcador com a imagem da empresa
   private showDestinationMarker(stand: Stand): void {
-    // const customIcon = L.icon({
-    //   iconUrl: stand.imageUrl,
-    //   iconSize: [40, 40], // Tamanho do ícone
-    //   iconAnchor: [20, 40], // Ponto do ícone que corresponde à coordenada
-    //   popupAnchor: [0, -40], // Ponto onde o popup deve abrir
-    // });
+    this.map.removeLayer(this.standMarkers);
 
+    const popupContent = `
+        <div style="text-align: center;">
+          <b>${stand.name}</b><br>
+          <img src="${stand.imageUrl}" alt="${stand.name} Logo" style="width:100px; margin-top: 8px;"/>
+        </div>
+      `;
+
+    // CORREÇÃO 3: O popup é corretamente vinculado e aberto ao clicar
     this.destinationMarker = L.marker(stand.coords, { icon: defaultIcon })
       .addTo(this.map)
-      .bindPopup(
-        `<div style="text-align: center;">
-        <img src="${stand.imageUrl}" alt="${stand.name}" style="width: 44px; height: auto; margin-bottom: 10px;">
-      </div>`
-      )
-      .openPopup();
+      .bindPopup(popupContent);
+
+    // Abre o popup uma vez na criação para feedback imediato
+    this.destinationMarker.openPopup();
   }
 
-  private createRouteTo(destination: L.LatLngExpression): void {
-    if (this.userLocation === null) {
-      this.zone.run(() => {
-        alert(
-          'Aguardando sua localização. Por favor, conceda a permissão e aguarde.'
-        );
-      });
+private createRouteTo(destination: L.LatLngExpression): void {
+    if (!this.userLocation) {
+      this.zone.run(() => alert("Aguardando sua localização..."));
       return;
     }
+    if (this.routingControl) this.map.removeControl(this.routingControl);
 
     this.routingControl = L.Routing.control({
       waypoints: [this.userLocation, L.latLng(destination)],
       routeWhileDragging: false,
       addWaypoints: false,
-      pointMarkerStyle: {
-        opacity: 0,
-        radius: 0,
-      },
-      show: false, // Não mostra o painel de instruções// Não cria marcadores de início/fim
-      lineOptions: {
+      show: false,
+      lineOptions: { 
         styles: [{ color: '#005b9f', opacity: 0.8, weight: 6 }],
         extendToWaypoints: true,
-        missingRouteTolerance: 1,
-      },
-    }).addTo(this.map);
+        missingRouteTolerance: 1
+      }
+    })
+    // MELHORIA 2: Adiciona os event listeners para a mensagem de recálculo
+    .on('routingstart', () => {
+      if (this.recalculatingControl?.getContainer()) {
+        this.recalculatingControl.getContainer()!.style.display = 'block';
+      }
+    })
+    .on('routesfound', () => {
+      if (this.recalculatingControl?.getContainer()) {
+        this.recalculatingControl.getContainer()!.style.display = 'none';
+      }
+    })
+    .on('routingerror', () => {
+      if (this.recalculatingControl?.getContainer()) {
+        this.recalculatingControl.getContainer()!.style.display = 'none';
+      }
+    })
+    .addTo(this.map);
   }
 
   private onLocationFound(e: L.LocationEvent): void {
     this.userLocation = e.latlng;
-
-    if (this.userLocationMarker === null) {
-      this.userLocationMarker = L.marker(this.userLocation, {
-        icon: defaultIcon,
-      })
-        .addTo(this.map)
-        .bindPopup('Você está aqui!');
+    if (!this.userLocationMarker) {
+      this.userLocationMarker = L.marker(this.userLocation, { icon: defaultIcon }).addTo(this.map).bindPopup("Você está aqui!");
     } else {
       this.userLocationMarker.setLatLng(this.userLocation);
     }
-
+    
+    // MELHORIA 1 (CORREÇÃO): Lógica correta para o GPS em tempo real
     if (this.routingControl) {
-      this.routingControl.spliceWaypoints(
-        0,
-        1,
-        new (L as any).Routing.Waypoint(this.userLocation, '', {})
-      );
+      const waypoints = this.routingControl.getWaypoints();
+      // Apenas atualiza se o ponto de partida for diferente, para evitar chamadas desnecessárias
+      if (!waypoints[0].latLng.equals(this.userLocation)) {
+        this.routingControl.setWaypoints([this.userLocation, waypoints[1].latLng]);
+      }
     }
+  }
+  private setupRecalculatingMessage(): void {
+    const RecalculatingControl = L.Control.extend({
+      onAdd: (map: L.Map) => {
+        const container = L.DomUtil.create('div', 'leaflet-control recalculating-message'); // Usa a classe CSS
+        container.style.display = 'none'; // Começa oculto
+        container.innerHTML = 'Recalculando rota...';
+        return container;
+      },
+      onRemove: (map: L.Map) => {}
+    });
+    this.recalculatingControl = new RecalculatingControl({ position: 'bottomleft' }).addTo(this.map);
   }
 
   private onLocationError(e: L.ErrorEvent): void {

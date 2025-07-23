@@ -67,7 +67,7 @@
             }
           },
           "options": {
-            "allowedHosts": ["https://2a95690711fa.ngrok-free.app"]
+            "allowedHosts": ["https://70bc49d3f7dc.ngrok-free.app"]
           },
           "defaultConfiguration": "development"
         },
