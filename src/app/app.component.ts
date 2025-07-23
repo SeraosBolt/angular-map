@@ -5,29 +5,26 @@ import { Component, AfterViewInit, NgZone } from '@angular/core';
 import * as L from 'leaflet';
 import 'leaflet-routing-machine';
 
-// Definição de tipo para um stand
+// Definição de tipo para um stand, agora com a URL da imagem
 interface Stand {
   name: string;
   coords: L.LatLngExpression;
-  img?: string; // Imagem opcional
+  imageUrl: string;
 }
 
-// Ícone padrão do Leaflet (para evitar quebras de imagem)
-// const iconRetinaUrl = '../assets/images/marker-icon-2x.png';
-// const iconUrl = '../assets/images/marker-icon.png';
-// const shadowUrl = '../assets/images/marker-shadow.png';
-// const iconDefault = L.icon({
-//   iconRetinaUrl,
-//   iconUrl,
-//   shadowUrl,
-//   iconSize: [25, 41],
-//   iconAnchor: [12, 41],
-//   popupAnchor: [1, -34],
-//   tooltipAnchor: [16, -28],
-//   shadowSize: [41, 41]
-// });
-// L.Marker.prototype.options.icon = iconDefault;
-const imageUrl = 'assets/images/johndeere.jpg';
+// Ícone padrão do Leaflet para sua localização
+const defaultIcon = L.icon({
+  iconRetinaUrl: 'assets/images/marker-icon-2x.png',
+  iconUrl: 'assets/images/marker-icon.png',
+  shadowUrl: 'assets/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  tooltipAnchor: [16, -28],
+  shadowSize: [41, 41],
+});
+L.Marker.prototype.options.icon = defaultIcon;
+
 @Component({
   selector: 'app-root',
   imports: [CommonModule],
@@ -38,15 +35,37 @@ export class AppComponent implements AfterViewInit {
   private map: any;
   private userLocation: L.LatLng | null = null;
   private userLocationMarker: L.Marker | null = null;
+  private destinationMarker: L.Marker | null = null;
   private routingControl: L.Routing.Control | null = null;
+  private standMarkers = L.layerGroup(); // Grupo para controlar os marcadores dos stands
 
+  // Lista de stands com as URLs das imagens
   public stands: Stand[] = [
-    { name: 'John Dear', coords: [-24.980359, -53.339052], img: imageUrl },
-    { name: 'Jacto', coords: [-24.980052, -53.339754] },
-    { name: 'Prisma', coords: [-24.983057, -53.338978] },
-    { name: 'New Holland', coords: [-24.978958, -53.341273] },
-    { name: 'Coamo', coords: [-24.978659, -53.339032] },
-    { name: 'Perche', coords: [-24.97814669824593, -53.34026992321015] },
+    {
+      name: 'John Dear',
+      coords: [-24.980359, -53.339052],
+      imageUrl: 'assets/images/john_dear_logo.jpeg',
+    },
+    {
+      name: 'Jacto',
+      coords: [-24.980052, -53.339754],
+      imageUrl: 'assets/images/jacto_logo.jpeg',
+    },
+    {
+      name: 'Prisma',
+      coords: [-24.983057, -53.338978],
+      imageUrl: 'assets/images/prisma_logo.jpeg',
+    },
+    {
+      name: 'New Holland',
+      coords: [-24.978958, -53.341273],
+      imageUrl: 'assets/images/new_holland_logo.jpeg',
+    },
+    {
+      name: 'Coamo',
+      coords: [-24.978659, -53.339032],
+      imageUrl: 'assets/images/coamo_logo.jpeg',
+    },
   ];
 
   constructor(private zone: NgZone) {}
@@ -63,84 +82,115 @@ export class AppComponent implements AfterViewInit {
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        'Prisma Softwares de gestão',
     }).addTo(this.map);
 
+    // // Adiciona todos os marcadores de stand ao grupo para controle
     // this.stands.forEach(stand => {
-    //   L.marker(stand.coords).addTo(this.map).bindPopup(`<img src="${stand.img}" alt="Imagem do stand ${stand.name}" style="width: 100px; height: auto;">`);
+    //   L.marker(stand.coords).bindPopup(`<b>${stand.name}</b>`).addTo(this.standMarkers);
     // });
+    this.standMarkers.addTo(this.map);
 
-    // Busca automática e contínua da localização
-    const locateOptions: L.LocateOptions = {
-      watch: true,
-      setView: false,
-      maxZoom: 16,
-      enableHighAccuracy: true,
-    };
-    this.map.locate(locateOptions);
+    // Inicia a busca contínua pela localização do usuário
+    this.map.locate({ watch: true, setView: false, enableHighAccuracy: true });
 
     this.map.on('locationfound', (e: L.LocationEvent) =>
       this.onLocationFound(e)
     );
     this.map.on('locationerror', (e: L.ErrorEvent) => this.onLocationError(e));
+
+    this.map.on('click', (e: L.LeafletMouseEvent) => this.clearMapForNavigation());
+    
   }
 
+  // Chamado quando um stand é selecionado no <select>
   public onStandSelected(event: any): void {
     const standIndex = event.target.value;
     if (standIndex === '' || standIndex === null) return;
+
     const selectedStand = this.stands[standIndex];
-    L.marker(selectedStand.coords)
+
+    // MELHORIA 2 e 3: Limpa o mapa e exibe apenas o stand selecionado
+    this.clearMapForNavigation();
+    this.showDestinationMarker(selectedStand);
+    this.createRouteTo(selectedStand.coords);
+  }
+
+  // Limpa marcadores de stands e rotas antigas
+  private clearMapForNavigation(): void {
+    this.map.removeLayer(this.standMarkers); // Remove todos os marcadores iniciais
+    if (this.destinationMarker) {
+      this.map.removeLayer(this.destinationMarker); // Remove o marcador de destino anterior
+    }
+    if (this.routingControl) {
+      this.map.removeControl(this.routingControl); // Remove a rota anterior
+    }
+  }
+
+  // Mostra um único marcador com a imagem da empresa
+  private showDestinationMarker(stand: Stand): void {
+    // const customIcon = L.icon({
+    //   iconUrl: stand.imageUrl,
+    //   iconSize: [40, 40], // Tamanho do ícone
+    //   iconAnchor: [20, 40], // Ponto do ícone que corresponde à coordenada
+    //   popupAnchor: [0, -40], // Ponto onde o popup deve abrir
+    // });
+
+    this.destinationMarker = L.marker(stand.coords, { icon: defaultIcon })
       .addTo(this.map)
       .bindPopup(
-        `<img src="${selectedStand.img}" alt="Imagem do stand ${selectedStand.name}" style="width: 100px; height: auto;">`
-      );
-    this.createRouteTo(selectedStand.coords);
+        `<div style="text-align: center;">
+        <img src="${stand.imageUrl}" alt="${stand.name}" style="width: 44px; height: auto; margin-bottom: 10px;">
+      </div>`
+      )
+      .openPopup();
   }
 
   private createRouteTo(destination: L.LatLngExpression): void {
     if (this.userLocation === null) {
       this.zone.run(() => {
         alert(
-          'Aguardando a sua localização. Por favor, certifique-se de que a permissão foi concedida ao site.'
+          'Aguardando sua localização. Por favor, conceda a permissão e aguarde.'
         );
       });
       return;
-    }
-
-    if (this.routingControl) {
-      this.map.removeControl(this.routingControl);
     }
 
     this.routingControl = L.Routing.control({
       waypoints: [this.userLocation, L.latLng(destination)],
       routeWhileDragging: false,
       addWaypoints: false,
-
-      // MELHORIA 2: Não mostrar o painel de instruções
-      show: false,
-
-      // Remove os marcadores padrão para não duplicar
+      pointMarkerStyle: {
+        opacity: 0,
+        radius: 0,
+      },
+      show: false, // Não mostra o painel de instruções// Não cria marcadores de início/fim
+      lineOptions: {
+        styles: [{ color: '#005b9f', opacity: 0.8, weight: 6 }],
+        extendToWaypoints: true,
+        missingRouteTolerance: 1,
+      },
     }).addTo(this.map);
   }
 
   private onLocationFound(e: L.LocationEvent): void {
     this.userLocation = e.latlng;
 
-    // Adiciona ou atualiza o marcador da localização do usuário
     if (this.userLocationMarker === null) {
-      this.userLocationMarker = L.marker(this.userLocation)
+      this.userLocationMarker = L.marker(this.userLocation, {
+        icon: defaultIcon,
+      })
         .addTo(this.map)
         .bindPopup('Você está aqui!');
     } else {
       this.userLocationMarker.setLatLng(this.userLocation);
     }
 
-    // MELHORIA 3: Atualiza a rota em tempo real se ela existir
     if (this.routingControl) {
       this.routingControl.spliceWaypoints(
         0,
         1,
-        L.Routing.waypoint(this.userLocation)
+        new (L as any).Routing.Waypoint(this.userLocation, '', {})
       );
     }
   }

@@ -1,39 +1,14 @@
 /* src/app/app.component.css */
 
-/* :host é a forma do Angular de estilizar o próprio componente */
 :host, #map {
   display: block;
-  height: 100vh; /* 100% da altura da tela */
-  width: 100vw;  /* 100% da largura da tela */
+  height: 100vh;
+  width: 100vw;
 }
 
-/* Estilos para o novo botão de localização */
-.location-button {
-  position: absolute;
-  top: 80px; /* Posição abaixo do controle de zoom */
-  left: 10px;
-  z-index: 1000; /* Garante que o botão fique sobre o mapa */
-  background-color: white;
-  color: #333;
-  border: 2px solid rgba(0,0,0,0.2);
-  border-radius: 4px;
-  width: 34px;
-  height: 34px;
-  font-size: 1.4em;
-  line-height: 30px;
-  text-align: center;
-  cursor: pointer;
-  box-shadow: 0 1px 5px rgba(0,0,0,0.65);
-}
-
-.location-button:hover {
-  background-color: #f4f4f4;
-}
-
-/* Estilos para o novo seletor de stands */
 .stand-selector {
   position: absolute;
-  top: 120px; /* Posição abaixo do botão de localização */
+  top: 80px;
   left: 10px;
   z-index: 1000;
   background-color: white;
@@ -45,6 +20,8 @@
   box-shadow: 0 1px 5px rgba(0,0,0,0.65);
   cursor: pointer;
 }
+
+/* Garante que o painel de instruções da rota fique invisível */
 .leaflet-routing-container {
   display: none !important;
 }
