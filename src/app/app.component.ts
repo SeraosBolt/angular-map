@@ -105,9 +105,6 @@ export class AppComponent implements AfterViewInit {
     // Inicia a busca contínua pela localização do usuário
     this.map.locate({ watch: true, setView: false, enableHighAccuracy: true });
 
-    this.map.on('locationfound', (e: L.LocationEvent) =>
-      this.onLocationFound(e)
-    );
     this.map.on('locationerror', (e: L.ErrorEvent) => this.onLocationError(e));
 
     this.map.on('click', (e: L.LeafletMouseEvent) => console.log(e.latlng));
@@ -201,7 +198,7 @@ export class AppComponent implements AfterViewInit {
     this.destinationMarker.openPopup();
   }
 
-private createRouteTo(destination: L.LatLngExpression): void {
+  private createRouteTo(destination: L.LatLngExpression): void {
     if (!this.userLocation) {
       this.zone.run(() => alert("Aguardando sua localização..."));
       return;
@@ -213,11 +210,11 @@ private createRouteTo(destination: L.LatLngExpression): void {
       routeWhileDragging: false,
       addWaypoints: false,
       show: false,
-      lineOptions: { 
+      lineOptions: {
         styles: [{ color: '#005b9f', opacity: 0.8, weight: 6 }],
         extendToWaypoints: true,
         missingRouteTolerance: 1
-      }
+      } as any
     })
     // MELHORIA 2: Adiciona os event listeners para a mensagem de recálculo
     .on('routingstart', () => {
@@ -239,10 +236,12 @@ private createRouteTo(destination: L.LatLngExpression): void {
   }
 
   private onLocationFound(e: L.LocationEvent): void {
+   alert('Localização encontrada:' + e.latlng.toString());
     this.userLocation = e.latlng;
     if (!this.userLocationMarker) {
       this.userLocationMarker = L.marker(this.userLocation, { icon: defaultIcon }).addTo(this.map).bindPopup("Você está aqui!");
     } else {
+      alert('Atualizando marcador usuario' + e.latlng.toString());
       this.userLocationMarker.setLatLng(this.userLocation);
     }
     
@@ -251,6 +250,7 @@ private createRouteTo(destination: L.LatLngExpression): void {
       const waypoints = this.routingControl.getWaypoints();
       // Apenas atualiza se o ponto de partida for diferente, para evitar chamadas desnecessárias
       if (!waypoints[0].latLng.equals(this.userLocation)) {
+        alert('recalculando:');
         this.routingControl.setWaypoints([this.userLocation, waypoints[1].latLng]);
       }
     }
